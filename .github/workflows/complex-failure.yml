@@ -1,0 +1,46 @@
+name: Complex CI Failure Simulation
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          echo "Installing dependencies..."
+          pip install -r requirements.txt
+
+      - name: Lint code (soft failure)
+        run: |
+          echo "Running linter..."
+          echo "WARNING: Line too long in app/main.py"
+          echo "WARNING: Unused import detected"
+        continue-on-error: true
+
+      - name: Run unit tests
+        run: |
+          echo "Running tests..."
+          pytest tests/
+      
+      - name: Simulate missing environment variable
+        run: |
+          echo "Checking environment variable..."
+          if [ -z "$DATABASE_URL" ]; then
+            echo "ERROR: DATABASE_URL is not set"
+            exit 1
+          fi
+
+      - name: This step will never run
+        run: echo "You should not see this"
