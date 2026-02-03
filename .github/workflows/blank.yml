@@ -1,0 +1,72 @@
+name: Phase 3 – Failure Normalization Matrix
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  missing-file:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Missing file
+        run: |
+          pip install -r requirements.txt
+
+  module-not-found:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Module not found
+        run: |
+          python -c "import totally_fake_module"
+
+  cannot-import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cannot import name
+        run: |
+          python - <<EOF
+          from math import does_not_exist
+          EOF
+
+  syntax-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Syntax error
+        run: |
+          python - <<EOF
+          def broken_function(
+              print("oops")
+          EOF
+
+  assertion-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assertion failed
+        run: |
+          python - <<EOF
+          assert 2 + 2 == 5
+          EOF
+
+  missing-env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Missing environment variable
+        run: |
+          python - <<EOF
+          import os
+          os.environ["SECRET_KEY"]
+          EOF
+
+  timeout:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Timeout simulation
+        run: |
+          sleep 300
+
+  connection-refused:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connection refused
+        run: |
+          curl http://localhost:9999
