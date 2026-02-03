@@ -7,32 +7,30 @@ on:
 jobs:
   missing-file:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Missing file
-        run: |
-          pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
   module-not-found:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Module not found
-        run: |
-          python -c "import totally_fake_module"
+      - run: python -c "import totally_fake_module"
 
   cannot-import:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Cannot import name
-        run: |
+      - run: |
           python - <<EOF
           from math import does_not_exist
           EOF
 
   syntax-error:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Syntax error
-        run: |
+      - run: |
           python - <<EOF
           def broken_function(
               print("oops")
@@ -40,18 +38,18 @@ jobs:
 
   assertion-failure:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Assertion failed
-        run: |
+      - run: |
           python - <<EOF
           assert 2 + 2 == 5
           EOF
 
   missing-env:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Missing environment variable
-        run: |
+      - run: |
           python - <<EOF
           import os
           os.environ["SECRET_KEY"]
@@ -59,14 +57,13 @@ jobs:
 
   timeout:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Timeout simulation
-        run: |
-          sleep 300
+      - run: |
+          timeout 5 sleep 300
 
   connection-refused:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
-      - name: Connection refused
-        run: |
-          curl http://localhost:9999
+      - run: curl http://localhost:9999
