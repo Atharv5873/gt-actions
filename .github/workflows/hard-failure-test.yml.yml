@@ -1,0 +1,13 @@
+name: Hard Failure Test
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  hard-fail:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Missing dependency file
+        run: |
+          pip install -r requirements.txt
