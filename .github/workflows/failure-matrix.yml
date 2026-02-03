@@ -1,0 +1,25 @@
+name: Failure Matrix (Parser Test Only)
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  assertion-failure:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - run: |
+          python - <<EOF
+          assert 1 == 2
+          EOF
+
+  syntax-error:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - run: |
+          python - <<EOF
+          def broken(
+            print("oops")
+          EOF
