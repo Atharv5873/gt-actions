@@ -1,0 +1,53 @@
+name: Complex CI Failure Stress Test
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  complex-failure:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 1️⃣ Missing dependency file (file_not_found)
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # 2️⃣ Module import failure (module_not_found)
+      - name: Import missing module
+        run: |
+          python - <<EOF
+          import totally_fake_module
+          EOF
+
+      # 3️⃣ Syntax error (syntax_error)
+      - name: Syntax error test
+        run: |
+          python - <<EOF
+          def broken_function(
+              print("this will fail")
+          EOF
+
+      # 4️⃣ Assertion failure (assertion_failed)
+      - name: Assertion failure
+        run: |
+          python - <<EOF
+          assert 1 == 2, "Math is broken"
+          EOF
+
+      # 5️⃣ Missing environment variable (missing_env)
+      - name: Missing env var
+        run: |
+          python - <<EOF
+          import os
+          os.environ["SUPER_SECRET_KEY"]
+          EOF
