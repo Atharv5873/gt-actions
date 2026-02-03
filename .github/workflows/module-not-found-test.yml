@@ -1,0 +1,13 @@
+name: Module Not Found Test
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  module-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Import missing module
+        run: |
+          python -c "import totally_fake_module"
