@@ -1,0 +1,13 @@
+name: Demo CI Failure
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  demo-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Missing requirements file
+        run: |
+          pip install -r requirements.txt
