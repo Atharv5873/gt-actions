@@ -1,0 +1,11 @@
+name: CI 05 - YAML Broken
+
+on: push
+
+jobs:
+  yaml-error:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "invalid: : yaml" > test.yml
+          yamllint test.yml

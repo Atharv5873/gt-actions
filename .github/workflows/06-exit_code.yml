@@ -1,0 +1,9 @@
+name: CI 06 - Exit Code Failure
+
+on: push
+
+jobs:
+  exit-code:
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1

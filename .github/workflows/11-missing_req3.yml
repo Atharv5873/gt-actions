@@ -1,0 +1,9 @@
+name: CI 10 - Connection Refused
+
+on: push
+
+jobs:
+  network-error:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl http://localhost:9999

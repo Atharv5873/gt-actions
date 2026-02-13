@@ -1,0 +1,9 @@
+name: CI 08 - Missing ENV
+
+on: push
+
+jobs:
+  env-fail:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -c "import os; print(os.environ['SECRET_KEY'])"

@@ -1,0 +1,9 @@
+name: CI 01 - Missing Requirements
+
+on: push
+
+jobs:
+  fail-req:
+    runs-on: ubuntu-latest
+    steps:
+      - run: pip install -r requirements.txt

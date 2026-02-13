@@ -1,0 +1,12 @@
+name: CI 09 - Permission Error
+
+on: push
+
+jobs:
+  perm-error:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          touch file.txt
+          chmod 000 file.txt
+          cat file.txt

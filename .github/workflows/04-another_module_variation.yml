@@ -1,0 +1,9 @@
+name: CI 04 - Module Not Found Variation
+
+on: push
+
+jobs:
+  module-error:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -c "import another_fake_module"

@@ -1,0 +1,9 @@
+name: CI 03 - Module Not Found
+
+on: push
+
+jobs:
+  module-error:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -c "import totally_fake_module"

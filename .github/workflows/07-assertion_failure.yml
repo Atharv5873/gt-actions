@@ -1,0 +1,9 @@
+name: CI 07 - Assertion Failed
+
+on: push
+
+jobs:
+  test-fail:
+    runs-on: ubuntu-latest
+    steps:
+      - run: python -c "assert 2+2==5"
