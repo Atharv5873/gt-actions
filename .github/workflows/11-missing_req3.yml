@@ -1,9 +1,9 @@
-name: CI 10 - Connection Refused
+name: CI 11 - Missing Requirements Third Time
 
 on: push
 
 jobs:
-  network-error:
+  fail-req:
     runs-on: ubuntu-latest
     steps:
-      - run: curl http://localhost:9999
+      - run: pip install -r requirements.txt
