@@ -1,0 +1,123 @@
+name: Demo RAG with Test Failures
+
+on:
+  workflow_dispatch:
+    inputs:
+      failure_type:
+        description: 'Type of test failure to generate'
+        required: true
+        type: choice
+        options:
+          - module_not_found
+          - assertion_failed
+          - timeout
+          - missing_file
+        default: 'module_not_found'
+
+jobs:
+  # First job: Create initial failure (no RAG)
+  create-first-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Simulate failure type
+        run: |
+          case "${{ github.event.inputs.failure_type }}" in
+            module_not_found)
+              echo "Testing import..."
+              python -c "import nonexistent_module_xyz"
+              ;;
+            assertion_failed)
+              echo "Running assertion test..."
+              python -c "assert 1 == 2, 'Expected failure for RAG demo'"
+              ;;
+            timeout)
+              echo "Testing timeout..."
+              timeout 1s sleep 10
+              ;;
+            missing_file)
+              echo "Accessing missing file..."
+              cat /tmp/nonexistent_file_for_rag_demo.txt
+              ;;
+          esac
+
+  # Second job: Create duplicate failure (should use RAG!)
+  create-second-failure:
+    runs-on: ubuntu-latest
+    needs: create-first-failure
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Wait for first failure to be processed
+        run: |
+          echo "Waiting 60 seconds for explanation to be generated..."
+          sleep 60
+      
+      - name: Simulate same failure type (RAG should activate)
+        run: |
+          case "${{ github.event.inputs.failure_type }}" in
+            module_not_found)
+              python -c "import nonexistent_module_xyz"
+              ;;
+            assertion_failed)
+              python -c "assert 1 == 2, 'Expected failure for RAG demo'"
+              ;;
+            timeout)
+              timeout 1s sleep 10
+              ;;
+            missing_file)
+              cat /tmp/nonexistent_file_for_rag_demo.txt
+              ;;
+          esac
+
+  # Third job: Create another duplicate (should use RAG with more examples!)
+  create-third-failure:
+    runs-on: ubuntu-latest
+    needs: create-second-failure
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Wait for second failure to be processed
+        run: |
+          echo "Waiting 60 seconds for second explanation..."
+          sleep 60
+      
+      - name: Simulate same failure again (RAG with 2 examples)
+        run: |
+          case "${{ github.event.inputs.failure_type }}" in
+            module_not_found)
+              python -c "import nonexistent_module_xyz"
+              ;;
+            assertion_failed)
+              python -c "assert 1 == 2, 'Expected failure for RAG demo'"
+              ;;
+            timeout)
+              timeout 1s sleep 10
+              ;;
+            missing_file)
+              cat /tmp/nonexistent_file_for_rag_demo.txt
+              ;;
+          esac
+      
+      - name: Demo complete
+        if: always()
+        run: |
+          echo "🎉 RAG Demo Complete!"
+          echo ""
+          echo "Check your CI/CD Copilot dashboard to see:"
+          echo "  1. First failure: rag_used=False (no history)"
+          echo "  2. Second failure: rag_used=True, rag_examples_count=1"
+          echo "  3. Third failure: rag_used=True, rag_examples_count=2"
+          echo ""
+          echo "Query to verify:"
+          echo "  SELECT f.failure_signature, e.rag_used, e.rag_examples_count"
+          echo "  FROM explanations e"
+          echo "  JOIN failures f ON e.failure_id = f.id"
+          echo "  WHERE f.failure_signature LIKE '%${{ github.event.inputs.failure_type }}%'"
+          echo "  ORDER BY e.created_at;"
