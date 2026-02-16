@@ -34,8 +34,8 @@ jobs:
               python -c "assert 1 == 2, 'Expected failure for RAG demo'"
               ;;
             timeout)
-              echo "Testing timeout..."
-              timeout 1s sleep 10
+              echo "Testing timeout scenario..."
+              python -c "raise TimeoutError('Operation timed out after 30 seconds')"
               ;;
             missing_file)
               echo "Accessing missing file..."
@@ -67,7 +67,7 @@ jobs:
               python -c "assert 1 == 2, 'Expected failure for RAG demo'"
               ;;
             timeout)
-              timeout 1s sleep 10
+              python -c "raise TimeoutError('Operation timed out after 30 seconds')"
               ;;
             missing_file)
               cat /tmp/nonexistent_file_for_rag_demo.txt
@@ -98,7 +98,7 @@ jobs:
               python -c "assert 1 == 2, 'Expected failure for RAG demo'"
               ;;
             timeout)
-              timeout 1s sleep 10
+              python -c "raise TimeoutError('Operation timed out after 30 seconds')"
               ;;
             missing_file)
               cat /tmp/nonexistent_file_for_rag_demo.txt
