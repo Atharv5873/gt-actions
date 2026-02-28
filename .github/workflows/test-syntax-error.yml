@@ -17,4 +17,5 @@ jobs:
           python-version: '3.11'
 
       - name: Run code with syntax error
-        run: python -c "def foo(: pass"
+        run: |
+          python -c "def foo(: pass"
