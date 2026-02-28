@@ -1,0 +1,35 @@
+# Test: lint_error (flake8)
+name: "Test - Lint Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-lint-error.yml'
+
+jobs:
+  lint-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Create code with lint violations
+        run: |
+          cat > bad_code.py << 'EOF'
+          import os,sys,json
+          x=1;y=2;z=3
+          def really_long_function_name_that_exceeds_the_maximum_line_length_allowed_by_flake8_default_settings(argument_one, argument_two, argument_three):
+              unused_variable = 42
+              return argument_one
+          if x==1:
+           print("wrong indent")
+          EOF
+
+      - name: Run flake8 (will fail)
+        run: flake8 bad_code.py --max-line-length 79 --count --statistics

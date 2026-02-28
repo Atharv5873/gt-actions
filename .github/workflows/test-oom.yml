@@ -1,0 +1,26 @@
+# Test: out_of_memory (simulated via exit code 137)
+name: "Test - Out of Memory"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-oom.yml'
+
+jobs:
+  oom-simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Simulate OOM (exit code 137)
+        run: |
+          python -c "
+          import sys
+          print('Allocating excessive memory...')
+          print('Container killed: out of memory')
+          sys.exit(137)
+          "

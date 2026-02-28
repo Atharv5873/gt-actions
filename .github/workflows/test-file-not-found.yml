@@ -1,0 +1,15 @@
+# Test: file_not_found
+name: "Test - File Not Found"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-file-not-found.yml'
+
+jobs:
+  file-not-found:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Access missing file
+        run: cat /tmp/this_file_does_not_exist_at_all.txt

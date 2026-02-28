@@ -1,0 +1,33 @@
+# Test: auth_error (401 Unauthorized)
+name: "Test - Auth Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-auth-error.yml'
+
+jobs:
+  auth-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Make authenticated request with bad token
+        run: |
+          python -c "
+          import urllib.request, urllib.error
+          req = urllib.request.Request(
+              'https://api.github.com/user',
+              headers={'Authorization': 'token ghp_invalidtoken123456789'}
+          )
+          try:
+              urllib.request.urlopen(req)
+          except urllib.error.HTTPError as e:
+              print(f'HTTP {e.code} Unauthorized: authentication failed')
+              print(f'401 Unauthorized to https://api.github.com/user')
+              raise
+          "

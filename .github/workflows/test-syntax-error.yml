@@ -1,0 +1,20 @@
+# Test: syntax_error
+name: "Test - Syntax Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-syntax-error.yml'
+
+jobs:
+  syntax-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run code with syntax error
+        run: python -c "def foo(: pass"

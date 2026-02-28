@@ -1,0 +1,19 @@
+# Test: timeout_error
+name: "Test - Timeout"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-timeout.yml'
+
+jobs:
+  timeout-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Sleep forever (will be killed by job timeout)
+        run: |
+          echo "Starting long-running process..."
+          sleep 120
+          echo "This should never print"

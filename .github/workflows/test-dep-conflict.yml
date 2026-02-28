@@ -1,0 +1,21 @@
+# Test: dependency_conflict (pip version conflict)
+name: "Test - Dependency Conflict"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-dep-conflict.yml'
+
+jobs:
+  dep-conflict:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install conflicting packages
+        run: |
+          pip install "numpy==1.21.0" "scipy==1.14.0"

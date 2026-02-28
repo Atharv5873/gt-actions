@@ -1,0 +1,20 @@
+# Test: dependency_error (ModuleNotFoundError)
+name: "Test - Module Not Found"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-module-not-found.yml'
+
+jobs:
+  module-not-found:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Import nonexistent package
+        run: python -c "import nonexistent_package_xyz"

@@ -1,0 +1,27 @@
+# Test: docker_build_error (COPY failed)
+name: "Test - Docker Build Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-docker-build.yml'
+
+jobs:
+  docker-build-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Create Dockerfile with missing file reference
+        run: |
+          cat > Dockerfile.test << 'EOF'
+          FROM python:3.11-slim
+          WORKDIR /app
+          COPY this_file_does_not_exist.txt /app/
+          RUN echo "This should never run"
+          EOF
+
+      - name: Build Docker image (will fail)
+        run: docker build -f Dockerfile.test -t test-image .

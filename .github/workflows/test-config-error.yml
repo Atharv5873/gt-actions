@@ -1,0 +1,20 @@
+# Test: config_error (KeyError / missing env var)
+name: "Test - Config Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-config-error.yml'
+
+jobs:
+  config-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Access missing environment variable
+        run: python -c "import os; key = os.environ['SECRET_API_KEY']"

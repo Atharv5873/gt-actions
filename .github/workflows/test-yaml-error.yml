@@ -1,0 +1,34 @@
+# Test: yaml_syntax_error
+name: "Test - YAML Syntax Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-yaml-error.yml'
+
+jobs:
+  yaml-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Parse invalid YAML
+        run: |
+          python -c "
+          import yaml
+          bad_yaml = '''
+          name: test
+          items:
+            - first
+           bad_indent: this
+            : invalid
+          '''
+          yaml.safe_load(bad_yaml)
+          "

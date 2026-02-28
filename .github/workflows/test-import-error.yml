@@ -1,0 +1,20 @@
+# Test: import_error (cannot import name)
+name: "Test - Import Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-import-error.yml'
+
+jobs:
+  import-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Trigger ImportError
+        run: python -c "from os import FakeClass"

@@ -1,0 +1,16 @@
+# Test: permission_error
+name: "Test - Permission Denied"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-permission-error.yml'
+
+jobs:
+  permission-denied:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Try to write to protected path
+        run: |
+          touch /etc/this_should_fail.txt

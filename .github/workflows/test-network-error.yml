@@ -1,0 +1,20 @@
+# Test: network_error (connection refused)
+name: "Test - Network Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-network-error.yml'
+
+jobs:
+  network-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Connect to non-existent service
+        run: python -c "import urllib.request; urllib.request.urlopen('http://localhost:9999/healthz', timeout=3)"

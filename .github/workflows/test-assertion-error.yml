@@ -1,0 +1,20 @@
+# Test: assertion_failure
+name: "Test - Assertion Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-assertion-error.yml'
+
+jobs:
+  assertion-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Trigger AssertionError
+        run: python -c "assert False, 'Expected value was not returned from API'"
