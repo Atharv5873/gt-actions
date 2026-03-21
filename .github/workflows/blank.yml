@@ -1,0 +1,35 @@
+name: "GT - RAG Verify (pytest)"
+on:  
+  push:
+    paths:
+      - '.github/workflows/test-rag-verify.yml'
+
+jobs:
+  rag-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Create failing tests
+        run: |
+          mkdir -p tests
+          cat > tests/test_rag_verify.py << 'PYEOF'
+          def test_user_service_returns_correct_id():
+              result = {"id": 99, "name": "Alice"}
+              assert result["id"] == 1, f"Expected id=1 but got {result['id']}"
+
+          def test_payment_calculates_correct_total():
+              subtotal = 49.99
+              tax = subtotal * 0.08
+              total = subtotal + tax
+              assert total == 50.00, f"AssertionError: expected 50.00 got {total:.2f}"
+          PYEOF
+
+      - name: Run pytest
+        run: pytest tests/ -v
