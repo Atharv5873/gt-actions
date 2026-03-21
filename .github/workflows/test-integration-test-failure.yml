@@ -1,0 +1,118 @@
+# Test: test_failure (integration test — service unavailable + assertion mismatch)
+# Failure type: test_failure
+# Scenario: Integration tests spin up a mock microservice and test multiple
+#            API endpoints. Tests fail on: wrong status codes, schema mismatches,
+#            missing headers, and timeout on slow endpoint.
+name: "GT - Integration Test Suite Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-integration-test-failure.yml'
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install pytest requests fastapi uvicorn httpx
+
+      - name: Create API service with bugs
+        run: |
+          mkdir -p service tests
+
+          # Buggy API service
+          cat > service/api.py << 'EOF'
+          from fastapi import FastAPI, HTTPException
+          import time, asyncio
+
+          app = FastAPI()
+
+          @app.get("/health")
+          def health():
+              return {"status": "degraded"}  # should be "healthy"
+
+          @app.get("/api/v1/users/{user_id}")
+          def get_user(user_id: int):
+              if user_id == 404:
+                  raise HTTPException(status_code=404, detail="Not found")
+              # Returns wrong schema (missing 'email' field, extra 'legacy_id')
+              return {"legacy_id": user_id, "username": "testuser", "active": True}
+
+          @app.post("/api/v1/orders")
+          def create_order(order: dict):
+              # Always returns 200 instead of 201 Created
+              return {"order_id": "ord_123", "status": "pending"}
+
+          @app.get("/api/v1/slow-report")
+          async def slow_report():
+              await asyncio.sleep(10)  # Extremely slow — causes timeout
+              return {"report": "data"}
+
+          @app.delete("/api/v1/users/{user_id}")
+          def delete_user(user_id: int):
+              # Returns 200 instead of 204 No Content
+              return {"deleted": True, "user_id": user_id}
+          EOF
+
+          cat > service/__init__.py << 'EOF'
+          EOF
+
+      - name: Start API service
+        run: |
+          cd service
+          uvicorn api:app --host 127.0.0.1 --port 8001 &
+          sleep 3
+          echo "Service started"
+
+      - name: Create integration tests
+        run: |
+          cat > tests/test_integration.py << 'EOF'
+          import requests
+          import pytest
+
+          BASE = "http://127.0.0.1:8001"
+
+          def test_health_check_returns_healthy():
+              resp = requests.get(f"{BASE}/health")
+              assert resp.status_code == 200
+              data = resp.json()
+              assert data["status"] == "healthy", f"Expected 'healthy', got '{data['status']}'"
+
+          def test_get_user_schema():
+              resp = requests.get(f"{BASE}/api/v1/users/1")
+              assert resp.status_code == 200
+              data = resp.json()
+              # These fields are expected but missing from response
+              assert "id" in data, f"Missing 'id' field: {data}"
+              assert "email" in data, f"Missing 'email' field: {data}"
+              assert "username" in data
+
+          def test_create_order_returns_201():
+              resp = requests.post(f"{BASE}/api/v1/orders", json={"product_id": 1, "qty": 2})
+              assert resp.status_code == 201, f"Expected 201, got {resp.status_code}"
+
+          def test_slow_report_within_timeout():
+              resp = requests.get(f"{BASE}/api/v1/slow-report", timeout=3)  # 3s timeout, endpoint takes 10s
+              assert resp.status_code == 200
+
+          def test_delete_user_returns_204():
+              resp = requests.delete(f"{BASE}/api/v1/users/1")
+              assert resp.status_code == 204, f"Expected 204 No Content, got {resp.status_code}"
+
+          def test_user_not_found_returns_404():
+              resp = requests.get(f"{BASE}/api/v1/users/404")
+              assert resp.status_code == 404  # This one passes
+          EOF
+
+          cat > tests/__init__.py << 'EOF'
+          EOF
+
+      - name: Run integration tests (will fail)
+        run: pytest tests/ -v --tb=short

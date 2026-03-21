@@ -1,0 +1,67 @@
+# Test: database_error (schema migration failure)
+# Failure type: database_error
+# Scenario: Alembic migration tries to add a NOT NULL column without a default
+#            to an existing table that already has rows → IntegrityError.
+name: "GT - Database Migration Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-database-migration-error.yml'
+
+jobs:
+  db-migration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install sqlalchemy alembic psycopg2-binary
+
+      - name: Seed existing data then run breaking migration
+        run: |
+          python << 'EOF'
+          import sqlalchemy as sa
+
+          DB_URL = "postgresql://testuser:testpass@localhost:5432/testdb"
+          engine = sa.create_engine(DB_URL)
+
+          # Create users table and insert rows (simulates existing production data)
+          with engine.begin() as conn:
+              conn.execute(sa.text("""
+                CREATE TABLE users (
+                  id SERIAL PRIMARY KEY,
+                  username VARCHAR(100) NOT NULL
+                )
+              """))
+              conn.execute(sa.text("INSERT INTO users (username) VALUES ('alice'), ('bob'), ('charlie')"))
+
+          # Breaking migration: add NOT NULL column without default — fails because rows exist
+          with engine.begin() as conn:
+              conn.execute(sa.text("""
+                ALTER TABLE users
+                ADD COLUMN email VARCHAR(200) NOT NULL
+              """))
+          EOF
+
+      - name: Verify migration succeeded
+        run: echo "Migration passed"

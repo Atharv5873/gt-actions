@@ -1,0 +1,47 @@
+# Test: infrastructure_error (disk space / no space left on device)
+# Failure type: infrastructure_error
+# Scenario: CI job fills up the temp filesystem by writing a large file until
+#            the disk quota is exhausted → "No space left on device".
+name: "GT - Disk Space Exhaustion"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-disk-space-error.yml'
+
+jobs:
+  disk-space:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show current disk usage
+        run: df -h /
+
+      - name: Fill disk space (simulated — write to tmpfs)
+        run: |
+          # Create a small tmpfs mount with a 50MB limit to simulate full disk
+          sudo mkdir -p /mnt/tiny_disk
+          sudo mount -t tmpfs -o size=50m tmpfs /mnt/tiny_disk
+
+          echo "Writing large files to exhaust disk space..."
+          python3 << 'EOF'
+          import os
+
+          target_dir = "/mnt/tiny_disk"
+          chunk = b"X" * (1024 * 1024)  # 1 MB chunk
+
+          try:
+              for i in range(200):  # Try to write 200 MB into 50 MB disk
+                  with open(f"{target_dir}/file_{i}.bin", "wb") as f:
+                      f.write(chunk)
+                  print(f"Wrote file_{i}.bin — total {(i+1)} MB")
+          except OSError as e:
+              print(f"OSError: {e}")
+              print("No space left on device")
+              raise SystemExit(1)
+          EOF
+
+      - name: Run build artifacts step (blocked by full disk)
+        run: |
+          cp /mnt/tiny_disk/file_0.bin /mnt/tiny_disk/artifact.tar.gz
+          echo "Artifact saved"

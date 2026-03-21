@@ -1,0 +1,112 @@
+# Test: lint_error (ESLint — JavaScript/TypeScript linting)
+# Failure type: lint_error
+# Scenario: A realistic TypeScript project with ESLint enforcing strict rules.
+#            Multiple violation types: unused vars, no-console, security issues,
+#            complexity thresholds exceeded, and React hook violations.
+name: "GT - ESLint TypeScript Lint Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-eslint-failure.yml'
+
+jobs:
+  eslint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Scaffold TypeScript project with violations
+        run: |
+          mkdir -p eslintapp/src
+          cd eslintapp
+
+          cat > package.json << 'EOF'
+          {
+            "name": "eslintapp",
+            "version": "1.0.0",
+            "devDependencies": {
+              "eslint": "^8.50.0",
+              "@typescript-eslint/eslint-plugin": "^6.0.0",
+              "@typescript-eslint/parser": "^6.0.0",
+              "eslint-plugin-security": "^1.7.1"
+            }
+          }
+          EOF
+
+          cat > .eslintrc.json << 'EOF'
+          {
+            "parser": "@typescript-eslint/parser",
+            "plugins": ["@typescript-eslint", "security"],
+            "extends": [
+              "eslint:recommended",
+              "plugin:@typescript-eslint/recommended",
+              "plugin:security/recommended"
+            ],
+            "rules": {
+              "no-console": "error",
+              "no-unused-vars": "error",
+              "@typescript-eslint/no-explicit-any": "error",
+              "complexity": ["error", 5],
+              "no-eval": "error",
+              "security/detect-eval-with-expression": "error",
+              "security/detect-non-literal-fs-filename": "error"
+            },
+            "env": { "node": true, "es2022": true }
+          }
+          EOF
+
+          cat > src/userService.ts << 'EOF'
+          import * as fs from 'fs';
+
+          // no-unused-vars: unusedImport, unusedConfig
+          import * as crypto from 'crypto';
+          const unusedConfig = { timeout: 5000 };
+
+          // @typescript-eslint/no-explicit-any: using 'any'
+          function processData(data: any, options: any): any {
+              // no-console: console.log in production code
+              console.log('Processing data:', data);
+              console.error('Debug info:', options);
+
+              // complexity: deeply nested if/else exceeds threshold of 5
+              if (data) {
+                  if (data.type === 'user') {
+                      if (data.role === 'admin') {
+                          if (data.active) {
+                              if (data.verified) {
+                                  if (data.mfa_enabled) {
+                                      return { access: 'full', level: 5 };
+                                  } else {
+                                      return { access: 'limited', level: 3 };
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+              return null;
+          }
+
+          // no-eval: eval usage
+          function executeScript(code: string): unknown {
+              return eval(code);  // dangerous eval
+          }
+
+          // security/detect-non-literal-fs-filename
+          function readConfig(configPath: string): string {
+              return fs.readFileSync(configPath, 'utf8');  // non-literal path
+          }
+
+          export { processData, executeScript, readConfig };
+          EOF
+
+      - name: Install ESLint dependencies
+        run: cd eslintapp && npm install
+
+      - name: Run ESLint (will fail with multiple violations)
+        run: cd eslintapp && npx eslint src/ --ext .ts --max-warnings 0

@@ -1,0 +1,115 @@
+# Test: infrastructure_error (Terraform plan / validation failure)
+# Failure type: infrastructure_error
+# Scenario: Terraform configuration with invalid provider configuration,
+#            undefined variable references, and type constraint violations.
+name: "GT - Terraform Validation Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-terraform-validation-error.yml'
+
+jobs:
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.6.0"
+
+      - name: Create broken Terraform configuration
+        run: |
+          mkdir -p terraform/modules/app
+
+          cat > terraform/main.tf << 'EOF'
+          terraform {
+            required_providers {
+              aws = {
+                source  = "hashicorp/aws"
+                version = "~> 5.0"
+              }
+            }
+          }
+
+          provider "aws" {
+            region = var.aws_region
+          }
+
+          # References undefined module output
+          resource "aws_instance" "web" {
+            ami           = module.ami_lookup.ami_id  # module not defined
+            instance_type = var.instance_type
+
+            # Invalid attribute — typo
+            user_datta = file("${path.module}/user_data.sh")
+
+            tags = {
+              Name        = var.project_name
+              Environment = var.environment
+              # Type mismatch: number assigned to string
+              Version     = 42
+            }
+          }
+
+          # Circular dependency
+          resource "aws_security_group" "web_sg" {
+            name   = "web-${aws_instance.web.id}-sg"  # references web before web is created
+            vpc_id = var.vpc_id
+
+            ingress {
+              from_port   = var.app_port
+              to_port     = var.app_port
+              protocol    = "tcp"
+              cidr_blocks = var.allowed_cidrs
+            }
+          }
+
+          resource "aws_db_instance" "main" {
+            identifier        = "prod-db"
+            engine            = "postgres"
+            engine_version    = "15.3"
+            instance_class    = "db.invalid.xlarge"  # invalid instance class
+            allocated_storage = -10  # negative storage
+            db_name           = var.db_name
+            username          = var.db_username
+            password          = var.db_password  # should use secrets manager
+          }
+          EOF
+
+          cat > terraform/variables.tf << 'EOF'
+          variable "aws_region" {
+            type    = string
+            default = "us-east-1"
+          }
+          variable "instance_type" { type = string }
+          variable "project_name" { type = string }
+          variable "environment" { type = string }
+          variable "vpc_id" { type = string }
+          variable "app_port" { type = number }
+          variable "allowed_cidrs" { type = list(string) }
+          variable "db_name" { type = string }
+          variable "db_username" { type = string }
+          variable "db_password" { type = string; sensitive = true }
+          EOF
+
+      - name: Initialize Terraform
+        run: cd terraform && terraform init -backend=false
+
+      - name: Validate Terraform configuration (will fail)
+        run: cd terraform && terraform validate
+
+      - name: Run Terraform plan (will also fail)
+        run: |
+          cd terraform
+          terraform plan \
+            -var="instance_type=t3.micro" \
+            -var="project_name=myapp" \
+            -var="environment=staging" \
+            -var="vpc_id=vpc-12345" \
+            -var="app_port=8080" \
+            -var='allowed_cidrs=["10.0.0.0/8"]' \
+            -var="db_name=appdb" \
+            -var="db_username=admin" \
+            -var="db_password=secret"

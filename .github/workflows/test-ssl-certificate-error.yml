@@ -1,0 +1,76 @@
+# Test: network_error (SSL/TLS certificate verification failure)
+# Failure type: network_error
+# Scenario: Service health check hits an endpoint with a self-signed or expired
+#            certificate.  ssl.SSLCertVerificationError raised — realistic
+#            in staging/internal environments with custom PKI.
+name: "GT - SSL Certificate Verification Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-ssl-certificate-error.yml'
+
+jobs:
+  ssl-error:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install openssl and generate self-signed cert
+        run: |
+          # Generate a self-signed cert (not trusted by system CA bundle)
+          openssl req -x509 -newkey rsa:2048 -keyout /tmp/key.pem -out /tmp/cert.pem \
+            -days 1 -nodes \
+            -subj "/C=US/ST=Test/L=Test/O=Test/CN=localhost"
+
+          # Start a local HTTPS server with the self-signed cert
+          python3 << 'EOF'
+          import ssl, http.server, threading, time
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(200)
+                  self.end_headers()
+                  self.wfile.write(b"OK")
+              def log_message(self, fmt, *args): pass
+
+          ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+          ctx.load_cert_chain("/tmp/cert.pem", "/tmp/key.pem")
+          server = http.server.HTTPServer(("localhost", 8443), Handler)
+          server.socket = ctx.wrap_socket(server.socket, server_side=True)
+
+          t = threading.Thread(target=server.handle_request)
+          t.daemon = True
+          t.start()
+          time.sleep(0.5)  # let server start
+          print("HTTPS test server started on port 8443")
+          EOF
+
+      - name: Health check against self-signed certificate (will fail)
+        run: |
+          python3 << 'EOF'
+          import urllib.request
+          import ssl
+
+          print("Running SSL health check against internal service...")
+          try:
+              # Default context verifies certificates — self-signed will fail
+              urllib.request.urlopen("https://localhost:8443/health", timeout=5)
+          except ssl.SSLCertVerificationError as e:
+              print(f"ssl.SSLCertVerificationError: {e}")
+              print("certificate verify failed: self-signed certificate")
+              print("CERTIFICATE_VERIFY_FAILED")
+              raise SystemExit(1)
+          except Exception as e:
+              print(f"Connection error: {e}")
+              raise SystemExit(1)
+          EOF
+
+      - name: Verify service with curl strict SSL
+        run: |
+          curl --fail --ssl-reqd https://localhost:8443/health
+          echo "Health check passed"

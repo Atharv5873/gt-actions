@@ -1,0 +1,62 @@
+# Test: infrastructure_error (segmentation fault / process crash)
+# Failure type: infrastructure_error
+# Scenario: A C extension compiled inline causes SIGSEGV (segfault).
+#            Process exits with code 139 — the kernel OOM/segfault exit code.
+name: "GT - Segmentation Fault Crash"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-segfault-crash.yml'
+
+jobs:
+  segfault:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tools
+        run: sudo apt-get install -y gcc
+
+      - name: Write C program with null pointer dereference (causes SIGSEGV)
+        run: |
+          cat > crash.c << 'EOF'
+          #include <stdio.h>
+          #include <stdlib.h>
+
+          void process_data(int* data, int size) {
+              printf("Processing %d items...\n", size);
+              for (int i = 0; i <= size; i++) {  // off-by-one: reads data[size]
+                  printf("item[%d] = %d\n", i, data[i]);
+              }
+          }
+
+          int main() {
+              printf("Starting data processing pipeline...\n");
+
+              int* buffer = malloc(10 * sizeof(int));
+              for (int i = 0; i < 10; i++) buffer[i] = i * 2;
+
+              process_data(buffer, 10);  // reads out of bounds → SIGSEGV
+              free(buffer);
+
+              // Null pointer dereference for certainty
+              int* null_ptr = NULL;
+              printf("Value: %d\n", *null_ptr);  // SIGSEGV
+
+              return 0;
+          }
+          EOF
+
+      - name: Compile program
+        run: gcc -o crash crash.c
+
+      - name: Run data processing pipeline (will segfault)
+        run: |
+          echo "Launching processing pipeline..."
+          ./crash
+          echo "Pipeline completed successfully"

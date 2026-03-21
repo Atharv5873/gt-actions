@@ -1,0 +1,60 @@
+# Test: build_error (Maven / Java compilation failure)
+# Failure type: build_error
+# Scenario: Maven project with a genuine Java compilation error — missing method,
+#            wrong return type.  Mirrors broken Java CI pipelines.
+name: "GT - Maven Build Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-maven-build-error.yml'
+
+jobs:
+  maven-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Scaffold broken Maven project
+        run: |
+          mkdir -p myproject/src/main/java/com/example
+          cd myproject
+
+          cat > pom.xml << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>com.example</groupId>
+            <artifactId>myproject</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <properties>
+              <maven.compiler.source>17</maven.compiler.source>
+              <maven.compiler.target>17</maven.compiler.target>
+            </properties>
+          </project>
+          EOF
+
+          # Broken Java: method declared to return String but returns int;
+          # also calls undefined method nonExistentHelper()
+          cat > src/main/java/com/example/App.java << 'EOF'
+          package com.example;
+
+          public class App {
+              public static String greet(String name) {
+                  return 42;  // error: incompatible types
+              }
+
+              public static void main(String[] args) {
+                  String result = nonExistentHelper();  // error: cannot find symbol
+                  System.out.println(greet("CI"));
+              }
+          }
+          EOF
+
+      - name: Compile with Maven (will fail)
+        run: cd myproject && mvn compile -B

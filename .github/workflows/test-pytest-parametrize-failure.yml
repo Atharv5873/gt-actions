@@ -1,0 +1,139 @@
+# Test: test_failure (complex pytest — parametrize, fixtures, mocking failures)
+# Failure type: test_failure
+# Scenario: Production-style pytest suite with parametrized tests, fixtures,
+#            and mocked external calls. Fails on: parametrize edge cases, fixture
+#            teardown errors, and mock return value mismatches.
+name: "GT - Complex Pytest Suite Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-pytest-parametrize-failure.yml'
+
+jobs:
+  pytest-complex:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install pytest pytest-mock freezegun
+
+      - name: Scaffold application with tests
+        run: |
+          mkdir -p app tests
+
+          cat > app/pricing.py << 'EOF'
+          from datetime import datetime, date
+          from typing import Optional
+
+          TIER_PRICES = {
+              "free":       0.00,
+              "starter":   29.00,
+              "pro":       99.00,
+              "enterprise": 499.00,
+          }
+
+          REGIONAL_TAX = {
+              "US": 0.08,
+              "UK": 0.20,
+              "EU": 0.21,
+              "AU": 0.10,
+          }
+
+          def calculate_price(tier: str, region: str, months: int = 1,
+                               discount_pct: float = 0.0) -> float:
+              base = TIER_PRICES.get(tier, 0.0)
+              tax = base * REGIONAL_TAX.get(region, 0.0)
+              total = (base + tax) * months
+              return round(total * (1 - discount_pct), 2)
+
+          def is_trial_eligible(account_created: date, trial_days: int = 14) -> bool:
+              delta = (date.today() - account_created).days
+              return delta <= trial_days
+
+          def apply_promo_code(code: str, original_price: float) -> float:
+              promos = {
+                  "SAVE10": 0.10,
+                  "SAVE25": 0.25,
+                  "HALFOFF": 0.50,
+              }
+              discount = promos.get(code.upper(), 0.0)
+              return round(original_price * (1 - discount), 2)
+          EOF
+
+          cat > app/__init__.py << 'EOF'
+          EOF
+
+          cat > tests/__init__.py << 'EOF'
+          EOF
+
+          cat > tests/test_pricing.py << 'EOF'
+          import pytest
+          from datetime import date, timedelta
+          from unittest.mock import patch
+          from freezegun import freeze_time
+          from app.pricing import calculate_price, is_trial_eligible, apply_promo_code
+
+          # ── Parametrize tests — some will fail ───────────────────────────────
+
+          @pytest.mark.parametrize("tier,region,months,expected", [
+              ("free",       "US", 1,  0.00),   # passes
+              ("starter",    "US", 1, 31.32),   # passes: 29 * 1.08 = 31.32
+              ("pro",        "UK", 1, 98.80),   # FAILS: actual = 99 * 1.20 = 118.80
+              ("enterprise", "EU", 3, 999.00),  # FAILS: actual = 499 * 1.21 * 3 = 1811.37
+              ("starter",    "AU", 6, 191.40),  # passes: 29 * 1.10 * 6 = 191.40
+              ("pro",        "US", 1, 106.00),  # FAILS: actual = 99 * 1.08 = 106.92
+          ])
+          def test_calculate_price_parametrized(tier, region, months, expected):
+              result = calculate_price(tier, region, months)
+              assert result == expected, f"tier={tier} region={region}: expected {expected}, got {result}"
+
+          # ── Trial eligibility with freeze_time ───────────────────────────────
+
+          @freeze_time("2026-01-15")
+          def test_trial_eligible_within_window():
+              created = date(2026, 1, 10)  # 5 days ago → eligible
+              assert is_trial_eligible(created) is True
+
+          @freeze_time("2026-01-15")
+          def test_trial_eligible_exactly_at_boundary():
+              created = date(2026, 1, 1)  # 14 days ago → eligible (boundary)
+              assert is_trial_eligible(created) is True
+
+          @freeze_time("2026-01-15")
+          def test_trial_not_eligible_past_window():
+              created = date(2025, 12, 31)  # 15 days ago → NOT eligible
+              assert is_trial_eligible(created) is False  # FAILS: returns True (15 > 14 but function uses <=)
+
+          # ── Promo code tests ─────────────────────────────────────────────────
+
+          @pytest.mark.parametrize("code,price,expected", [
+              ("SAVE10",  100.0,  90.0),   # passes
+              ("SAVE25",  100.0,  75.0),   # passes
+              ("HALFOFF", 100.0,  50.0),   # passes
+              ("INVALID",  100.0, 95.0),   # FAILS: no discount applied → returns 100.0
+              ("save10",   100.0, 90.0),   # passes (uppercase handled)
+          ])
+          def test_promo_code_discounts(code, price, expected):
+              result = apply_promo_code(code, price)
+              assert result == expected, f"code={code}: expected {expected}, got {result}"
+
+          # ── Mock-based test ──────────────────────────────────────────────────
+
+          def test_pricing_calls_external_validator(mocker):
+              """Test that pricing validates region via external service."""
+              # Mocking a function that doesn't exist → AttributeError
+              mock_validate = mocker.patch("app.pricing.validate_region_external")
+              mock_validate.return_value = True
+
+              result = calculate_price("pro", "US", 1)
+              mock_validate.assert_called_once_with("US")  # function doesn't exist
+          EOF
+
+      - name: Run complex pytest suite (will fail)
+        run: pytest tests/ -v --tb=short --no-header

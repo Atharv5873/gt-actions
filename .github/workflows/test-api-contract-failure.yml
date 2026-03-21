@@ -1,0 +1,101 @@
+# Test: test_failure (API contract / schema validation failure)
+# Failure type: test_failure
+# Scenario: FastAPI application's response schema changed but the contract tests
+#            weren't updated.  Pydantic ValidationError and assertion mismatches
+#            show a realistic API versioning/breaking change failure.
+name: "GT - API Contract Validation Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-api-contract-failure.yml'
+
+jobs:
+  api-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install fastapi httpx pydantic pytest pytest-asyncio
+
+      - name: Create API and broken contract tests
+        run: |
+          mkdir -p api tests
+
+          # The API (v2) — response shape changed from v1
+          cat > api/main.py << 'EOF'
+          from fastapi import FastAPI
+          from pydantic import BaseModel
+          from typing import List, Optional
+
+          app = FastAPI()
+
+          class UserV2(BaseModel):
+              user_id: int          # renamed from 'id' in v1
+              full_name: str        # renamed from 'name' in v1
+              contact_email: str    # renamed from 'email' in v1
+              is_active: bool = True
+
+          USERS = [
+              UserV2(user_id=1, full_name="Alice Smith", contact_email="alice@example.com"),
+              UserV2(user_id=2, full_name="Bob Jones", contact_email="bob@example.com"),
+          ]
+
+          @app.get("/users", response_model=List[UserV2])
+          def list_users():
+              return USERS
+
+          @app.get("/users/{user_id}", response_model=UserV2)
+          def get_user(user_id: int):
+              for u in USERS:
+                  if u.user_id == user_id:
+                      return u
+              return None
+          EOF
+
+          cat > api/__init__.py << 'EOF'
+          EOF
+
+          # Contract tests written against v1 schema — will fail with v2 API
+          cat > tests/test_api_contract.py << 'EOF'
+          import pytest
+          from fastapi.testclient import TestClient
+          from api.main import app
+
+          client = TestClient(app)
+
+          def test_list_users_schema_v1():
+              """Contract test expecting v1 field names."""
+              resp = client.get("/users")
+              assert resp.status_code == 200
+              users = resp.json()
+              assert len(users) == 2
+
+              # These will fail — v2 renamed the fields
+              assert "id" in users[0], f"Expected field 'id', got keys: {list(users[0].keys())}"
+              assert "name" in users[0], f"Expected field 'name', got keys: {list(users[0].keys())}"
+              assert "email" in users[0], f"Expected field 'email', got keys: {list(users[0].keys())}"
+
+          def test_get_user_returns_correct_name():
+              resp = client.get("/users/1")
+              data = resp.json()
+              # Expects old field name 'name'
+              assert data["name"] == "Alice Smith", f"Contract broken: {data}"
+
+          def test_user_id_field_type():
+              resp = client.get("/users/1")
+              data = resp.json()
+              # Expects integer field 'id', not 'user_id'
+              assert isinstance(data.get("id"), int), f"'id' field missing or wrong type: {data}"
+          EOF
+
+          cat > tests/__init__.py << 'EOF'
+          EOF
+
+      - name: Run contract tests (will fail — v1 contract vs v2 API)
+        run: pytest tests/ -v --tb=short

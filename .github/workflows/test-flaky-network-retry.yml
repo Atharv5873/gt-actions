@@ -1,0 +1,100 @@
+# Test: flaky_test (non-deterministic network-dependent test)
+# Failure type: flaky_test
+# Scenario: Tests that depend on external network responses with artificial
+#            randomness injected to simulate intermittent failures (packet loss,
+#            service degradation, DNS resolution timing).
+name: "GT - Flaky Network-Dependent Test"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-flaky-network-retry.yml'
+
+jobs:
+  flaky-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Create flaky service mock and tests
+        run: |
+          mkdir -p flaky tests
+
+          # Mock service that fails 60% of the time (always fails in CI due to fixed seed)
+          cat > flaky/unreliable_client.py << 'EOF'
+          import random
+          import time
+          import hashlib
+          import os
+
+          def get_with_simulated_instability(url: str, attempt: int = 0) -> dict:
+              """
+              Simulates a network client with intermittent failures.
+              Uses a deterministic seed based on time+URL to be reproducibly flaky.
+              """
+              # Seed is deterministic per (minute, url) — fails consistently in test window
+              seed = int(time.time() / 60) + hash(url) % 1000
+              rng = random.Random(seed + attempt)
+
+              failure_rate = 0.65  # 65% failure rate
+
+              if rng.random() < failure_rate:
+                  error_type = rng.choice([
+                      "ConnectionResetError: [Errno 104] Connection reset by peer",
+                      "TimeoutError: Read timeout after 2.0s",
+                      "requests.exceptions.ChunkedEncodingError: Response body corrupt",
+                      "urllib3.exceptions.ProtocolError: Connection broken",
+                  ])
+                  raise ConnectionError(f"Network error on attempt {attempt}: {error_type}")
+
+              return {"status": "ok", "data": [1, 2, 3], "latency_ms": rng.randint(10, 500)}
+          EOF
+
+          cat > flaky/__init__.py << 'EOF'
+          EOF
+
+          cat > tests/__init__.py << 'EOF'
+          EOF
+
+          cat > tests/test_flaky_service.py << 'EOF'
+          import pytest
+          from flaky.unreliable_client import get_with_simulated_instability
+
+          def test_service_returns_data_without_retry():
+              """No retry logic — will fail ~65% of the time."""
+              result = get_with_simulated_instability("https://api.internal/data")
+              assert result["status"] == "ok"
+              assert "data" in result
+
+          def test_service_returns_correct_schema():
+              result = get_with_simulated_instability("https://api.internal/users")
+              assert isinstance(result["data"], list)
+              assert result["latency_ms"] < 1000
+
+          def test_batch_processing_all_succeed():
+              """All 5 URLs must succeed — high probability of at least one failure."""
+              urls = [
+                  "https://api.internal/endpoint/1",
+                  "https://api.internal/endpoint/2",
+                  "https://api.internal/endpoint/3",
+                  "https://api.internal/endpoint/4",
+                  "https://api.internal/endpoint/5",
+              ]
+              results = []
+              for url in urls:
+                  result = get_with_simulated_instability(url)
+                  results.append(result)
+
+              assert len(results) == 5, f"Expected 5 results, got {len(results)}"
+              assert all(r["status"] == "ok" for r in results)
+          EOF
+
+      - name: Run flaky tests (will fail due to simulated network instability)
+        run: pytest tests/ -v --tb=short -p no:randomly

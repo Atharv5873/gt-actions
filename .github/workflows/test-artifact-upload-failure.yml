@@ -1,0 +1,67 @@
+# Test: infrastructure_error (artifact upload / storage failure)
+# Failure type: infrastructure_error
+# Scenario: Build produces artifacts but upload fails — artifact is too large,
+#            the path doesn't exist, and the storage quota is exceeded.
+name: "GT - Artifact Upload Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-artifact-upload-failure.yml'
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build application
+        run: |
+          mkdir -p dist
+          echo "Built application binary v1.0.0" > dist/app_binary
+
+      - name: Upload build artifact (non-existent path)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: dist/nonexistent_directory/  # Path doesn't exist → upload fails
+          if-no-files-found: error  # Explicit error on missing files
+
+      - name: Upload test results (empty)
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results/  # Never created
+          if-no-files-found: error
+
+      - name: Verify artifacts uploaded
+        run: |
+          python3 << 'EOF'
+          import os, sys
+
+          expected_artifacts = [
+              "dist/app_binary",
+              "dist/checksums.sha256",
+              "dist/MANIFEST.txt",
+          ]
+
+          print("Verifying build artifacts...")
+          missing = []
+          for path in expected_artifacts:
+              if os.path.exists(path):
+                  size = os.path.getsize(path)
+                  print(f"  OK: {path} ({size} bytes)")
+              else:
+                  missing.append(path)
+                  print(f"  MISSING: {path}")
+
+          if missing:
+              print(f"\nArtifact verification failed: {len(missing)} file(s) missing")
+              for f in missing:
+                  print(f"  - {f}")
+              sys.exit(1)
+          EOF

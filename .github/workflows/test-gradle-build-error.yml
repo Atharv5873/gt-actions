@@ -1,0 +1,79 @@
+# Test: build_error (Gradle / Android-style build failure)
+# Failure type: build_error
+# Scenario: Gradle project with a task configuration error and unresolved
+#            dependency — mirrors real Android/Spring Boot CI breaks.
+name: "GT - Gradle Build Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-gradle-build-error.yml'
+
+jobs:
+  gradle-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Scaffold broken Gradle project
+        run: |
+          mkdir -p mygradle/src/main/java/com/example
+          cd mygradle
+
+          cat > settings.gradle << 'EOF'
+          rootProject.name = 'mygradle'
+          EOF
+
+          # build.gradle with unresolved dependency + misconfigured task
+          cat > build.gradle << 'EOF'
+          plugins {
+              id 'java'
+          }
+
+          repositories {
+              mavenCentral()
+          }
+
+          dependencies {
+              // This version doesn't exist → Gradle resolution failure
+              implementation 'org.springframework.boot:spring-boot-starter-web:99.99.99'
+              // Non-existent artifact
+              implementation 'com.nonexistent.corp:magic-library:1.0.0'
+          }
+
+          tasks.register('customBuild') {
+              doLast {
+                  // Referencing undefined property
+                  def result = undefinedProperty.toString()
+                  println "Build result: ${result}"
+              }
+          }
+
+          compileJava.dependsOn customBuild
+          EOF
+
+          # Java source with compilation error
+          cat > src/main/java/com/example/Main.java << 'EOF'
+          package com.example;
+
+          import org.springframework.boot.SpringApplication;
+          import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+          @SpringBootApplication
+          public class Main {
+              public static void main(String[] args) {
+                  SpringApplication.run(Main.class args);  // syntax error: missing comma
+              }
+          }
+          EOF
+
+      - name: Build with Gradle (will fail — unresolved dep + syntax error)
+        run: cd mygradle && gradle build --no-daemon -x test

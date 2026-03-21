@@ -1,0 +1,75 @@
+# Test: coverage_failure (test coverage below threshold)
+# Failure type: coverage_failure
+# Scenario: Pytest with coverage enforcement — code has 40% coverage but
+#            CI enforces 80% minimum.  Realistic gate failure in quality pipelines.
+name: "GT - Coverage Below Threshold"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-coverage-failure.yml'
+
+jobs:
+  coverage-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest and coverage
+        run: pip install pytest pytest-cov
+
+      - name: Scaffold application with low coverage
+        run: |
+          mkdir -p app tests
+
+          cat > app/payment.py << 'EOF'
+          def process_payment(amount: float, currency: str) -> dict:
+              if amount <= 0:
+                  raise ValueError("Amount must be positive")
+              if currency not in ("USD", "EUR", "GBP"):
+                  raise ValueError(f"Unsupported currency: {currency}")
+              # Simulate payment gateway call
+              fee = amount * 0.029 + 0.30
+              return {"status": "approved", "fee": fee, "net": amount - fee}
+
+          def refund(transaction_id: str, amount: float) -> dict:
+              if not transaction_id:
+                  raise ValueError("transaction_id required")
+              return {"status": "refunded", "transaction_id": transaction_id}
+
+          def calculate_tax(amount: float, region: str) -> float:
+              rates = {"US": 0.08, "UK": 0.20, "EU": 0.21, "OTHER": 0.0}
+              return amount * rates.get(region, rates["OTHER"])
+
+          def validate_card(card_number: str) -> bool:
+              # Luhn algorithm
+              digits = [int(d) for d in card_number.replace(" ", "")]
+              for i in range(len(digits) - 2, -1, -2):
+                  digits[i] *= 2
+                  if digits[i] > 9:
+                      digits[i] -= 9
+              return sum(digits) % 10 == 0
+          EOF
+
+          cat > app/__init__.py << 'EOF'
+          EOF
+
+          # Tests only cover 1 of 4 functions = ~25% coverage
+          cat > tests/test_payment.py << 'EOF'
+          from app.payment import process_payment
+
+          def test_valid_payment():
+              result = process_payment(100.0, "USD")
+              assert result["status"] == "approved"
+          EOF
+
+          cat > tests/__init__.py << 'EOF'
+          EOF
+
+      - name: Run tests with coverage (will fail — coverage 25% < 80% threshold)
+        run: |
+          pytest tests/ --cov=app --cov-report=term-missing --cov-fail-under=80 -v

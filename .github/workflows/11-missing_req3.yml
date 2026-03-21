@@ -1,9 +1,0 @@
-name: CI 11 - Missing Requirements Third Time
-
-on: push
-
-jobs:
-  fail-req:
-    runs-on: ubuntu-latest
-    steps:
-      - run: pip install -r requirements.txt

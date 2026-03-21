@@ -1,0 +1,62 @@
+# Test: type_error (mypy static type checking)
+# Failure type: type_error
+# Scenario: Production-style Python codebase with mypy strict mode enabled.
+#            Multiple type annotation violations that break the CI type check gate.
+name: "GT - Mypy Type Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-mypy-type-error.yml'
+
+jobs:
+  mypy-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install mypy
+        run: pip install mypy
+
+      - name: Create module with type errors
+        run: |
+          mkdir -p myservice
+          cat > myservice/models.py << 'EOF'
+          from typing import Optional, List
+
+          class UserProfile:
+              def __init__(self, user_id: int, name: str, email: str) -> None:
+                  self.user_id = user_id
+                  self.name = name
+                  self.email = email
+
+          def get_user(user_id: int) -> UserProfile:
+              # Returns None instead of UserProfile — type error
+              return None  # type: ignore[return-value] would suppress, but we don't add it
+
+          def process_users(users: List[UserProfile]) -> dict:
+              # Returns list instead of dict — type mismatch
+              return [u.name for u in users]
+
+          def calculate_score(value: int) -> int:
+              result: str = value * 2  # int assigned to str variable
+              return result  # returning str where int expected
+
+          def send_notification(user: UserProfile, message: str) -> None:
+              # Calls method that doesn't exist on UserProfile
+              user.send_email(message)
+
+          def parse_ids(raw: str) -> List[int]:
+              # Returns List[str] instead of List[int]
+              return raw.split(",")
+          EOF
+
+          cat > myservice/__init__.py << 'EOF'
+          EOF
+
+      - name: Run mypy strict check (will fail)
+        run: mypy myservice/ --strict --ignore-missing-imports

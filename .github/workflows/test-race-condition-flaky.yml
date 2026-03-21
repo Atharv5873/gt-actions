@@ -1,0 +1,88 @@
+# Test: flaky_test (race condition / non-deterministic failure)
+# Failure type: flaky_test
+# Scenario: Concurrent worker threads write to shared state without locking.
+#            The test fails intermittently depending on thread scheduling —
+#            a realistic concurrency bug that is hard to reproduce consistently.
+name: "GT - Race Condition Flaky Test"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-race-condition-flaky.yml'
+
+jobs:
+  race-condition:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Create concurrency module with race condition
+        run: |
+          mkdir -p concurrency tests
+
+          cat > concurrency/counter.py << 'EOF'
+          import threading
+          import time
+
+          class SharedCounter:
+              """Counter without thread safety — exhibits race conditions."""
+              def __init__(self):
+                  self.value = 0
+
+              def increment(self, n: int = 1000):
+                  for _ in range(n):
+                      # Non-atomic: read → modify → write races between threads
+                      current = self.value
+                      time.sleep(0)  # yield to scheduler
+                      self.value = current + 1
+          EOF
+
+          cat > concurrency/__init__.py << 'EOF'
+          EOF
+
+          cat > tests/__init__.py << 'EOF'
+          EOF
+
+          cat > tests/test_counter.py << 'EOF'
+          import threading
+          from concurrency.counter import SharedCounter
+
+          def test_concurrent_increments_are_correct():
+              """
+              10 threads each increment 1000 times = expected total 10000.
+              Due to race condition, actual total will be less → test fails.
+              """
+              counter = SharedCounter()
+              threads = [
+                  threading.Thread(target=counter.increment, args=(1000,))
+                  for _ in range(10)
+              ]
+              for t in threads:
+                  t.start()
+              for t in threads:
+                  t.join()
+
+              expected = 10000
+              actual = counter.value
+              print(f"Expected: {expected}, Actual: {actual}")
+              assert actual == expected, (
+                  f"Race condition detected: expected {expected} but got {actual}. "
+                  f"Lost {expected - actual} increments due to unsynchronized access."
+              )
+
+          def test_sequential_increment_is_correct():
+              """This one passes — baseline."""
+              counter = SharedCounter()
+              counter.increment(100)
+              assert counter.value == 100
+          EOF
+
+      - name: Run tests (race condition test will likely fail)
+        run: pytest tests/ -v --tb=short

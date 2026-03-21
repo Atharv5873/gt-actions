@@ -1,0 +1,55 @@
+# Test: dependency_conflict (pip lock file conflict / transitive dependency hell)
+# Failure type: dependency_conflict
+# Scenario: Complex transitive dependency conflict where package A requires
+#            package C>=2.0 but package B requires package C<1.5 — pip
+#            ResolutionImpossible with full dependency tree output.
+name: "GT - Complex Transitive Dependency Conflict"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-pip-lock-conflict.yml'
+
+jobs:
+  dep-conflict:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Create requirements.txt with conflicting transitive deps
+        run: |
+          cat > requirements.txt << 'EOF'
+          # Direct dependencies with incompatible transitive requirements:
+          # tensorflow 2.13 requires numpy>=1.23.5
+          # but older scikit-learn 0.24.2 requires numpy<1.25.0 (OK),
+          # the real conflict: tensorflow 2.13 requires keras==2.13.* but keras-tuner
+          # 1.0.0 requires keras<2.9.0
+          tensorflow==2.13.0
+          keras-tuner==1.0.0
+          # Also add version pins that fight each other
+          numpy==1.21.0
+          scipy==1.14.0
+          protobuf==3.19.0
+          EOF
+
+      - name: Attempt installation (will fail with ResolutionImpossible)
+        run: |
+          pip install -r requirements.txt --verbose 2>&1 | tee install.log
+          exit_code=${PIPESTATUS[0]}
+          cat install.log
+          exit $exit_code
+
+      - name: Run pip-compile to resolve (also fails)
+        run: |
+          pip install pip-tools
+          cat > requirements.in << 'EOF'
+          tensorflow==2.13.0
+          keras-tuner==1.0.0
+          numpy==1.21.0
+          scipy==1.14.0
+          EOF
+          pip-compile requirements.in --verbose

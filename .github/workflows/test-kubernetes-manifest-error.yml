@@ -1,0 +1,104 @@
+# Test: infrastructure_error (Kubernetes manifest validation failure)
+# Failure type: infrastructure_error
+# Scenario: kubectl apply fails due to invalid manifest — wrong apiVersion,
+#            missing required fields, invalid resource values.
+name: "GT - Kubernetes Manifest Validation Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-kubernetes-manifest-error.yml'
+
+jobs:
+  k8s-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install kubectl and kubeval
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl && sudo mv kubectl /usr/local/bin/
+          # Install kubeval for manifest validation
+          wget -q https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
+          tar xf kubeval-linux-amd64.tar.gz && sudo mv kubeval /usr/local/bin/ || true
+
+      - name: Create broken Kubernetes manifests
+        run: |
+          mkdir -p k8s
+
+          # Deployment with invalid fields
+          cat > k8s/deployment.yaml << 'EOF'
+          apiVersion: apps/v99  # invalid: should be apps/v1
+          kind: Deployment
+          metadata:
+            name: myapp
+            namespace: production
+          spec:
+            replicas: -3  # invalid: replicas must be >= 0 (but -3 is rejected)
+            selector:
+              matchLabels:
+                app: myapp
+            template:
+              metadata:
+                labels:
+                  app: myapp
+              spec:
+                containers:
+                  - name: myapp
+                    image: myapp:latest
+                    resources:
+                      requests:
+                        memory: "abc"  # invalid: not a valid quantity
+                        cpu: "xyz"     # invalid: not a valid quantity
+                      limits:
+                        memory: "50mb" # invalid: should be "50Mi"
+          EOF
+
+          # Service with wrong port type
+          cat > k8s/service.yaml << 'EOF'
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: myapp-service
+          spec:
+            selector:
+              app: myapp
+            ports:
+              - protocol: INVALID_PROTOCOL  # must be TCP/UDP/SCTP
+                port: 99999  # invalid: port must be 1-65535
+                targetPort: -1  # invalid: negative port
+            type: LoadBalancerX  # invalid type
+          EOF
+
+          # ConfigMap with invalid structure
+          cat > k8s/configmap.yaml << 'EOF'
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: myapp-config
+          data:
+            DATABASE_URL: null  # invalid: null not allowed in data
+            nested:
+              key: value  # invalid: data values must be strings, not objects
+          EOF
+
+      - name: Validate manifests with kubeval
+        run: |
+          kubeval k8s/*.yaml --strict 2>&1 || true
+          echo "---"
+          python3 << 'EOF'
+          import subprocess, sys
+          result = subprocess.run(
+              ["kubeval", "k8s/deployment.yaml", "k8s/service.yaml", "--strict"],
+              capture_output=True, text=True
+          )
+          print(result.stdout)
+          print(result.stderr)
+          if result.returncode != 0:
+              sys.exit(result.returncode)
+          EOF
+
+      - name: Apply manifests to cluster (no cluster — will show auth error)
+        run: |
+          kubectl apply -f k8s/ --dry-run=client
+          echo "Manifests applied"

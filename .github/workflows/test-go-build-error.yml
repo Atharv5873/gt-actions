@@ -1,0 +1,104 @@
+# Test: compilation_error (Go build failure)
+# Failure type: compilation_error
+# Scenario: Go module with undefined variables, wrong return types, and
+#            unused imports — all caught by go build (Go treats these as errors).
+name: "GT - Go Build Compilation Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-go-build-error.yml'
+
+jobs:
+  go-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Scaffold broken Go module
+        run: |
+          mkdir -p goservice/cmd/api
+          mkdir -p goservice/internal/handler
+
+          cd goservice
+
+          go mod init github.com/example/goservice
+
+          cat > cmd/api/main.go << 'EOF'
+          package main
+
+          import (
+              "fmt"
+              "net/http"
+              "os"
+              "encoding/json"  // imported but not used
+              "database/sql"   // imported but not used
+          )
+
+          func main() {
+              port := os.Getenv("PORT")
+              if port == "" {
+                  port = "8080"
+              }
+
+              // Calling undefined function
+              config := loadConfiguration()  // undefined: loadConfiguration
+
+              http.HandleFunc("/health", healthHandler)
+              http.HandleFunc("/users", usersHandler)
+
+              fmt.Printf("Starting server on :%s with config: %v\n", port, config)
+              err := http.ListenAndServe(":"+port, nil)
+              if err != nil {
+                  // Undefined variable: logger
+                  logger.Fatal("Server failed to start:", err)  // undefined: logger
+              }
+          }
+          EOF
+
+          cat > internal/handler/users.go << 'EOF'
+          package handler
+
+          import (
+              "encoding/json"
+              "net/http"
+          )
+
+          type User struct {
+              ID    int    `json:"id"`
+              Name  string `json:"name"`
+              Email string `json:"email"`
+          }
+
+          // Return type says string but returns User struct
+          func GetUser(id int) string {
+              return User{ID: id, Name: "Alice", Email: "alice@example.com"}  // mismatched types
+          }
+
+          // Missing return statement in non-void function
+          func ValidateEmail(email string) bool {
+              if len(email) == 0 {
+                  return false
+              }
+              // Missing return for the true case
+          }
+
+          func healthHandler(w http.ResponseWriter, r *http.Request) {
+              json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+          }
+
+          func usersHandler(w http.ResponseWriter, r *http.Request) {
+              users := []User{{ID: 1, Name: "Alice", Email: "alice@example.com"}}
+              json.NewEncoder(w).Encode(users)
+          }
+          EOF
+
+      - name: Build Go service (will fail with compilation errors)
+        run: cd goservice && go build ./...
+
+      - name: Run Go tests
+        run: cd goservice && go test ./...

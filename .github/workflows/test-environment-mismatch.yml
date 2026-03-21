@@ -1,0 +1,57 @@
+# Test: environment_error (Python version / runtime mismatch)
+# Failure type: environment_error
+# Scenario: Code uses Python 3.11+ match statement syntax but the CI runner
+#            is pinned to Python 3.9 — SyntaxError at runtime reveals env mismatch.
+name: "GT - Environment / Runtime Mismatch"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-environment-mismatch.yml'
+
+jobs:
+  env-mismatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python 3.9 (old version)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+
+      - name: Verify Python version
+        run: python --version
+
+      - name: Install dependencies
+        run: pip install pydantic==2.5.0
+
+      - name: Run application (uses Python 3.10+ syntax)
+        run: |
+          python << 'EOF'
+          # This file requires Python >= 3.10 (match statement)
+          # but the CI environment has Python 3.9
+          import sys
+          print(f"Running on Python {sys.version}")
+
+          def classify_status(status_code: int) -> str:
+              match status_code:  # SyntaxError on Python < 3.10
+                  case 200:
+                      return "OK"
+                  case 404:
+                      return "Not Found"
+                  case 500:
+                      return "Internal Server Error"
+                  case _:
+                      return "Unknown"
+
+          print(classify_status(200))
+          EOF
+
+      - name: Run type-annotated code using 3.10+ union syntax
+        run: |
+          python << 'EOF'
+          # PEP 604 union types (X | Y) require Python 3.10+
+          def greet(name: str | None) -> str | None:  # SyntaxError on 3.9
+              return f"Hello, {name}" if name else None
+          print(greet("World"))
+          EOF

@@ -1,0 +1,65 @@
+# Test: compilation_error (Rust / Cargo build failure)
+# Failure type: compilation_error
+# Scenario: Rust project with real compilation errors — borrow checker violation,
+#            type mismatch, and undefined function.  Mirrors Rust CI failures.
+name: "GT - Rust Cargo Compilation Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-cargo-rust-build-error.yml'
+
+jobs:
+  rust-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Scaffold broken Rust project
+        run: |
+          cargo new --name myservice rust_app
+          cd rust_app
+
+          # Overwrite main.rs with compilation errors
+          cat > src/main.rs << 'EOF'
+          use std::collections::HashMap;
+
+          // Error 1: function signature mismatch — declared returns String, returns i32
+          fn get_user_name(id: u32) -> String {
+              return 42;  // E0308: mismatched types
+          }
+
+          // Error 2: borrow checker — returning reference to local variable
+          fn get_config() -> &str {
+              let config = String::from("production");
+              &config  // E0106: missing lifetime specifier; E0515: returns reference to local
+          }
+
+          // Error 3: calling undefined function
+          fn process_request(data: &str) -> Result<String, String> {
+              let validated = validate_input(data);  // E0425: cannot find function
+              let result = transform_data(validated)?;  // E0425: cannot find function
+              Ok(result)
+          }
+
+          fn main() {
+              // Error 4: use after move
+              let data = String::from("hello");
+              let processed = data;  // data is moved here
+              println!("{}", data);  // E0382: borrow of moved value
+
+              // Error 5: type mismatch in HashMap
+              let mut scores: HashMap<String, i32> = HashMap::new();
+              scores.insert("alice", "100");  // E0308: expected i32, found &str
+
+              println!("Done");
+          }
+          EOF
+
+      - name: Build Rust project (will fail with multiple E0XXX errors)
+        run: cd rust_app && cargo build 2>&1
+
+      - name: Run tests
+        run: cd rust_app && cargo test

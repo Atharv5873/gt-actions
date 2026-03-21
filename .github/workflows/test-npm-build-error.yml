@@ -1,0 +1,64 @@
+# Test: build_error (npm / Node.js build failure)
+# Failure type: build_error
+# Scenario: A realistic React/Node app build that fails due to a broken
+#            import and a missing peer dependency — mirrors real-world "npm run build" CI breaks.
+name: "GT - npm Build Error"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-npm-build-error.yml'
+
+jobs:
+  npm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Scaffold broken project
+        run: |
+          mkdir -p myapp/src
+          cd myapp
+
+          cat > package.json << 'EOF'
+          {
+            "name": "myapp",
+            "version": "1.0.0",
+            "scripts": {
+              "build": "webpack --config webpack.config.js"
+            },
+            "dependencies": {
+              "react": "^18.0.0"
+            },
+            "devDependencies": {
+              "webpack": "^5.88.0",
+              "webpack-cli": "^5.1.0"
+            }
+          }
+          EOF
+
+          cat > webpack.config.js << 'EOF'
+          const path = require('path');
+          module.exports = {
+            entry: './src/index.js',
+            output: { path: path.resolve(__dirname, 'dist'), filename: 'bundle.js' },
+            mode: 'production'
+          };
+          EOF
+
+          # index.js imports a module that doesn't exist → webpack module-not-found error
+          cat > src/index.js << 'EOF'
+          import { BrokenComponent } from './components/BrokenComponent';
+          import { MissingUtils } from '../utils/nonexistent';
+          console.log(BrokenComponent, MissingUtils);
+          EOF
+
+      - name: Install dependencies
+        run: cd myapp && npm install
+
+      - name: Build (will fail — missing modules)
+        run: cd myapp && npm run build

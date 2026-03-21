@@ -1,0 +1,57 @@
+# Test: out_of_memory (real memory exhaustion — not simulated exit code)
+# Failure type: out_of_memory
+# Scenario: A Python process genuinely allocates memory until the container
+#            OOM killer fires (or Python raises MemoryError).
+#            Includes a realistic-looking data processing context.
+name: "GT - Memory Exhaustion (Real OOM)"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-resource-leak-memory.yml'
+
+jobs:
+  memory-exhaustion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install psutil
+
+      - name: Run data pipeline with memory leak
+        run: |
+          python3 << 'EOF'
+          import psutil
+          import os
+
+          process = psutil.Process(os.getpid())
+          print(f"Starting memory: {process.memory_info().rss / 1024 / 1024:.1f} MB")
+
+          # Simulate a data pipeline that leaks memory — keeps references alive
+          cache = {}
+          batch_count = 0
+
+          print("Loading dataset batches into in-memory cache...")
+          try:
+              while True:
+                  batch_count += 1
+                  # Each batch: 10 MB of data kept in cache (never released)
+                  batch_key = f"batch_{batch_count}"
+                  cache[batch_key] = bytearray(10 * 1024 * 1024)  # 10 MB
+                  mem_mb = process.memory_info().rss / 1024 / 1024
+                  print(f"Loaded {batch_key} — RSS memory: {mem_mb:.0f} MB, batches in cache: {batch_count}")
+
+                  if mem_mb > 12000:  # Hard guard — let OOM killer fire naturally before this
+                      print("WARNING: Memory usage critical, cache size unbounded")
+
+          except MemoryError:
+              print("MemoryError: cannot allocate memory for batch processing")
+              print(f"Allocated {batch_count} batches before failure")
+              print(f"Container killed: out of memory")
+              raise SystemExit(137)
+          EOF

@@ -1,0 +1,64 @@
+# Test: security_error (Bandit security scan + hardcoded secrets)
+# Failure type: security_error
+# Scenario: Bandit detects high-severity security issues: hardcoded password,
+#            SQL injection via string formatting, use of subprocess with shell=True.
+name: "GT - Security Scan Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-security-scan-failure.yml'
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Create code with security vulnerabilities
+        run: |
+          mkdir -p secure_app
+          cat > secure_app/auth.py << 'EOF'
+          import subprocess
+          import sqlite3
+
+          # B105: hardcoded password
+          ADMIN_PASSWORD = "supersecret123"
+          DB_PASSWORD = "prod_db_pass_hardcoded"
+          SECRET_KEY = "my-jwt-secret-key-hardcoded"
+
+          def authenticate(username: str, password: str) -> bool:
+              return password == ADMIN_PASSWORD
+
+          def get_user_data(user_id: str) -> list:
+              conn = sqlite3.connect("app.db")
+              cur = conn.cursor()
+              # B608: SQL injection via string formatting
+              query = "SELECT * FROM users WHERE id = " + user_id
+              cur.execute(query)
+              return cur.fetchall()
+
+          def run_report(report_name: str) -> str:
+              # B602: subprocess with shell=True — command injection vector
+              result = subprocess.check_output(
+                  f"generate_report.sh {report_name}",
+                  shell=True
+              )
+              return result.decode()
+
+          def load_config(config_path: str) -> dict:
+              import pickle
+              # B301: pickle.load — arbitrary code execution
+              with open(config_path, "rb") as f:
+                  return pickle.load(f)
+          EOF
+
+      - name: Run Bandit security scan (will fail on HIGH severity)
+        run: bandit -r secure_app/ -ll -ii --exit-zero=False

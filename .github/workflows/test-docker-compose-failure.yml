@@ -1,0 +1,89 @@
+# Test: infrastructure_error (docker-compose service startup failure)
+# Failure type: infrastructure_error
+# Scenario: docker compose up starts services, but the app container fails
+#            its health check because it can't connect to a DB with wrong
+#            credentials — realistic integration environment startup failure.
+name: "GT - Docker Compose Service Startup Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-docker-compose-failure.yml'
+
+jobs:
+  compose-failure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Compose environment
+        run: |
+          mkdir -p compose_test
+
+          # App that fails to start because DB credentials are wrong
+          cat > compose_test/app.py << 'EOF'
+          import os, time, sys
+          import psycopg2
+
+          DB_HOST = os.environ.get("DB_HOST", "localhost")
+          DB_PORT = os.environ.get("DB_PORT", "5432")
+          DB_USER = os.environ.get("DB_USER", "wronguser")
+          DB_PASS = os.environ.get("DB_PASS", "wrongpassword")
+          DB_NAME = os.environ.get("DB_NAME", "appdb")
+
+          print(f"Connecting to {DB_HOST}:{DB_PORT}/{DB_NAME} as {DB_USER}...")
+          for attempt in range(3):
+              try:
+                  conn = psycopg2.connect(
+                      host=DB_HOST, port=DB_PORT,
+                      dbname=DB_NAME, user=DB_USER, password=DB_PASS,
+                      connect_timeout=5
+                  )
+                  print("Database connection established")
+                  break
+              except psycopg2.OperationalError as e:
+                  print(f"Attempt {attempt+1}/3 failed: {e}")
+                  time.sleep(2)
+          else:
+              print("FATAL: Could not connect to database after 3 attempts")
+              print("password authentication failed for user \"wronguser\"")
+              sys.exit(1)
+          EOF
+
+          cat > compose_test/Dockerfile << 'EOF'
+          FROM python:3.11-slim
+          RUN pip install psycopg2-binary
+          COPY app.py /app.py
+          CMD ["python", "/app.py"]
+          EOF
+
+          cat > compose_test/docker-compose.yml << 'EOF'
+          services:
+            postgres:
+              image: postgres:15
+              environment:
+                POSTGRES_USER: correctuser
+                POSTGRES_PASSWORD: correctpassword
+                POSTGRES_DB: appdb
+              healthcheck:
+                test: ["CMD", "pg_isready", "-U", "correctuser"]
+                interval: 5s
+                retries: 5
+
+            app:
+              build: .
+              environment:
+                DB_HOST: postgres
+                DB_USER: wronguser       # intentionally wrong
+                DB_PASS: wrongpassword   # intentionally wrong
+                DB_NAME: appdb
+                DB_PORT: "5432"
+              depends_on:
+                postgres:
+                  condition: service_healthy
+          EOF
+
+      - name: Start services
+        run: |
+          cd compose_test
+          docker compose build
+          docker compose up --exit-code-from app --abort-on-container-exit app

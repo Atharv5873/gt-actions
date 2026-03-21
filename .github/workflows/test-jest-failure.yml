@@ -1,0 +1,72 @@
+# Test: test_failure (Jest / JavaScript test suite)
+# Failure type: test_failure
+# Scenario: Realistic Node.js project with Jest tests that fail on assertion
+#            mismatches, async timeout, and a mock that doesn't match spec.
+name: "GT - Jest Test Failure"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-jest-failure.yml'
+
+jobs:
+  jest-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Scaffold Jest project
+        run: |
+          mkdir -p jestapp/src jestapp/__tests__
+          cd jestapp
+
+          cat > package.json << 'EOF'
+          {
+            "name": "jestapp",
+            "version": "1.0.0",
+            "scripts": { "test": "jest --no-coverage" },
+            "devDependencies": { "jest": "^29.0.0" }
+          }
+          EOF
+
+          # Source module under test
+          cat > src/calculator.js << 'EOF'
+          function add(a, b) { return a + b; }
+          function multiply(a, b) { return a * b; }
+          async function fetchPrice(id) {
+            return new Promise((resolve) => setTimeout(() => resolve(99.99), 5000));
+          }
+          module.exports = { add, multiply, fetchPrice };
+          EOF
+
+          # Tests — intentionally broken assertions + timeout
+          cat > __tests__/calculator.test.js << 'EOF'
+          const { add, multiply, fetchPrice } = require('../src/calculator');
+
+          test('add returns correct sum', () => {
+            expect(add(2, 3)).toBe(10);  // wrong expected: 5 != 10
+          });
+
+          test('multiply returns correct product', () => {
+            expect(multiply(4, 5)).toBe(21);  // wrong expected: 20 != 21
+          });
+
+          test('fetchPrice resolves within timeout', async () => {
+            const price = await fetchPrice(1);  // resolves after 5s but jest default timeout is 5s → flaky/timeout
+            expect(price).toBe(0.00);  // also wrong value
+          }, 1000);  // 1 second timeout — will abort
+
+          test('error handling works', () => {
+            expect(() => { throw new Error("Service unavailable"); }).not.toThrow();
+          });
+          EOF
+
+      - name: Install dependencies
+        run: cd jestapp && npm install
+
+      - name: Run Jest (will fail)
+        run: cd jestapp && npm test

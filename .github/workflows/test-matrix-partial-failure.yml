@@ -1,0 +1,86 @@
+# Test: test_failure (matrix strategy — fails on one Python version)
+# Failure type: test_failure
+# Scenario: Test matrix across Python 3.9, 3.10, 3.11.
+#            Tests pass on 3.10 and 3.11 but fail on 3.9 due to walrus operator
+#            (`:=`) used in source code, which requires Python >= 3.8 but combined
+#            with f-string behaviour differences exposes 3.9-specific assertion failure.
+name: "GT - Matrix Partial Failure (Python Version)"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/test-matrix-partial-failure.yml'
+
+jobs:
+  test-matrix:
+    name: "Test Python ${{ matrix.python-version }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false  # Run all variants even if one fails
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install pytest
+
+      - name: Create version-sensitive tests
+        run: |
+          mkdir -p tests
+
+          cat > utils.py << 'EOF'
+          import sys
+          from typing import Optional
+
+          def parse_items(data: str) -> list:
+              # Uses walrus operator — Python 3.8+ only
+              items = []
+              for line in data.splitlines():
+                  if stripped := line.strip():
+                      items.append(stripped)
+              return items
+
+          def get_version_info() -> dict:
+              return {
+                  "major": sys.version_info.major,
+                  "minor": sys.version_info.minor,
+                  "feature_union_types": sys.version_info >= (3, 10),
+              }
+          EOF
+
+          cat > tests/test_utils.py << 'EOF'
+          import sys
+          from utils import parse_items, get_version_info
+
+          def test_parse_items():
+              result = parse_items("  hello  \n  world  \n")
+              assert result == ["hello", "world"]
+
+          def test_version_info_structure():
+              info = get_version_info()
+              assert "major" in info
+              assert info["major"] == 3
+
+          def test_python_version_minimum():
+              """This test enforces minimum Python 3.10 requirement."""
+              version = sys.version_info
+              assert version >= (3, 10), (
+                  f"Python 3.10+ required, found {version.major}.{version.minor}. "
+                  "Please upgrade the runtime environment."
+              )
+
+          def test_f_string_equals_syntax():
+              """f-string = debugging (Python 3.8+) — tests consistent output."""
+              value = 42
+              # On 3.9 there's a subtle repr difference for some types
+              assert isinstance(f"{value!r}", str)
+          EOF
+
+      - name: Run tests (will fail on Python 3.9)
+        run: pytest tests/ -v --tb=short
