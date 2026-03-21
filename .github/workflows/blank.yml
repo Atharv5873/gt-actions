@@ -1,8 +1,7 @@
 name: "GT - RAG Verify (pytest)"
 on:  
   push:
-    paths:
-      - '.github/workflows/test-rag-verify.yml'
+    branches: main
 
 jobs:
   rag-verify:
